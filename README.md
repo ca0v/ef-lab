@@ -60,10 +60,18 @@ See [SETUP.md](SETUP.md) for detailed installation and usage instructions.
 
 Run `npm test` to see all available tests. Currently includes:
 
-### Core Concepts (3 tests)
+### Core Concepts (7 tests)
+
+**Basic Operations:**
 1. **SaveChanges Is Required for Persistence** - Forgetting to call SaveChanges()
 2. **Entity State Tracking** - Understanding entity lifecycle states
 3. **Change Tracking Detects Property Changes** - How EF detects modifications
+4. **Delete Operations Require SaveChanges** - Deleting entities properly
+
+**One-to-Many Relationships:**
+5. **Querying One-to-Many Relationships with Include** - Loading related data with Include()
+6. **Adding Related Entities** - Inserting parent with children
+7. **Deleting Parent Deletes Children (Cascade Delete)** - Understanding cascade behavior
 
 More tests coming soon! Check [TUTORIAL.md](TUTORIAL.md) for detailed explanations.
 
