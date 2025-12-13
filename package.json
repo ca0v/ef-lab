@@ -15,6 +15,7 @@
     "build": "dotnet build EFLab/EFLab.csproj",
     "test": "dotnet run --project EFLab/EFLab.csproj",
     "test:pattern": "dotnet run --project EFLab/EFLab.csproj -- --test",
+    "docs:generate": "dotnet run --project EFLab/EFLab.csproj -- --generate-docs",
     "clean": "dotnet clean EFLab/EFLab.csproj && rm -rf EFLab/bin EFLab/obj",
     "watch": "dotnet watch run --project EFLab/EFLab.csproj",
     "ef:list": "dotnet ef",

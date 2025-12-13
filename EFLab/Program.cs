@@ -1,4 +1,6 @@
+using System.Reflection;
 using EFLab.Testing;
+using EFLab.Tests;
 
 namespace EFLab;
 
@@ -14,102 +16,95 @@ class Program
 
         // Parse command line arguments
         string? pattern = null;
+        bool generateDocs = false;
+        
         for (int i = 0; i < args.Length; i++)
         {
             if (args[i] == "--test" && i + 1 < args.Length)
             {
                 pattern = args[i + 1];
-                break;
+            }
+            else if (args[i] == "--generate-docs")
+            {
+                generateDocs = true;
             }
         }
 
-        // Register all test modules
-        RegisterCoreConceptTests(runner);
-        RegisterInMemoryTests(runner);
-        RegisterTransactionTests(runner);
-        RegisterMultipleContextTests(runner);
-        RegisterNoTrackingTests(runner);
-        RegisterManyToManyTests(runner);
+        // Auto-discover and register all tests with [Tutorial] attribute
+        DiscoverAndRegisterTests(runner);
+
+        // Generate documentation if requested
+        if (generateDocs)
+        {
+            GenerateDocumentation();
+            return 0;
+        }
 
         // Run tests
         return runner.Run(pattern);
     }
 
-    static void RegisterCoreConceptTests(TestRunner runner)
+    static void DiscoverAndRegisterTests(TestRunner runner)
     {
-        runner.RegisterTest(
-            "DbContext_Lifecycle_TracksEntities",
-            "CoreConcepts",
-            () =>
+        var assembly = Assembly.GetExecutingAssembly();
+        var testClasses = assembly.GetTypes()
+            .Where(t => t.IsClass && t.Name.EndsWith("Tests"));
+
+        foreach (var testClass in testClasses)
+        {
+            var methods = testClass.GetMethods(BindingFlags.Public | BindingFlags.Static)
+                .Where(m => m.GetCustomAttribute<TutorialAttribute>() != null)
+                .OrderBy(m => m.GetCustomAttribute<TutorialAttribute>()!.Order);
+
+            foreach (var method in methods)
             {
-                // TODO: First test will go here
-                Assert.IsTrue(false, "Not implemented yet - this is intentional!");
+                var attr = method.GetCustomAttribute<TutorialAttribute>()!;
+                runner.RegisterTest(
+                    attr.Title,
+                    attr.Category,
+                    () => method.Invoke(null, null)
+                );
             }
-        );
+        }
     }
 
-    static void RegisterInMemoryTests(TestRunner runner)
+    static void GenerateDocumentation()
     {
-        runner.RegisterTest(
-            "InMemory_Setup_Example",
-            "InMemory",
-            () =>
-            {
-                // TODO: In-memory DB tests
-                Assert.IsTrue(true, "Placeholder");
-            }
-        );
-    }
+        Console.WriteLine("Generating tutorial documentation from test attributes...\n");
 
-    static void RegisterTransactionTests(TestRunner runner)
-    {
-        runner.RegisterTest(
-            "Transaction_Usage_Example",
-            "Transactions",
-            () =>
-            {
-                // TODO: Transaction tests
-                Assert.IsTrue(true, "Placeholder");
-            }
-        );
-    }
+        var assembly = Assembly.GetExecutingAssembly();
+        var testClasses = assembly.GetTypes()
+            .Where(t => t.IsClass && t.Name.EndsWith("Tests"))
+            .OrderBy(t => t.Name);
 
-    static void RegisterMultipleContextTests(TestRunner runner)
-    {
-        runner.RegisterTest(
-            "MultipleContexts_Tracking_Conflicts",
-            "MultipleContexts",
-            () =>
-            {
-                // TODO: Multiple context tests
-                Assert.IsTrue(true, "Placeholder");
-            }
-        );
-    }
+        var docPath = Path.Combine(Directory.GetCurrentDirectory(), "TUTORIAL.md");
+        using var writer = new StreamWriter(docPath);
 
-    static void RegisterNoTrackingTests(TestRunner runner)
-    {
-        runner.RegisterTest(
-            "NoTracking_Query_Example",
-            "NoTracking",
-            () =>
-            {
-                // TODO: No-tracking tests
-                Assert.IsTrue(true, "Placeholder");
-            }
-        );
-    }
+        writer.WriteLine("# Entity Framework Core Tutorial");
+        writer.WriteLine();
+        writer.WriteLine("A failing-first approach to learning EF Core. Each test intentionally fails to teach you common pitfalls and how to fix them.");
+        writer.WriteLine();
 
-    static void RegisterManyToManyTests(TestRunner runner)
-    {
-        runner.RegisterTest(
-            "ManyToMany_Implicit_Setup",
-            "ManyToMany",
-            () =>
+        foreach (var testClass in testClasses)
+        {
+            var methods = testClass.GetMethods(BindingFlags.Public | BindingFlags.Static)
+                .Where(m => m.GetCustomAttribute<TutorialAttribute>() != null)
+                .OrderBy(m => m.GetCustomAttribute<TutorialAttribute>()!.Order);
+
+            if (!methods.Any()) continue;
+
+            writer.WriteLine($"# {testClass.Name.Replace("Tests", " Tests")}");
+            writer.WriteLine();
+
+            foreach (var method in methods)
             {
-                // TODO: Many-to-many tests
-                Assert.IsTrue(true, "Placeholder");
+                var attr = method.GetCustomAttribute<TutorialAttribute>()!;
+                writer.WriteLine(attr.ToMarkdown());
+                writer.WriteLine("---");
+                writer.WriteLine();
             }
-        );
+        }
+
+        Console.WriteLine($"Documentation generated: {docPath}");
     }
 }

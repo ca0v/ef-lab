@@ -1,5 +1,7 @@
 namespace EFLab.Testing;
 
+using System.Reflection;
+
 /// <summary>
 /// Simple test runner for Entity Framework tutorial.
 /// Runs tests with pattern matching support.
@@ -60,6 +62,32 @@ public class TestRunner
             Console.WriteLine("✗ FAILED");
             Console.ResetColor();
             Console.WriteLine($"  {ex.Message}\n");
+            _failed++;
+        }
+        catch (TargetInvocationException ex) when (ex.InnerException is AssertionException assertEx)
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine("✗ FAILED");
+            Console.ResetColor();
+            Console.WriteLine($"  {assertEx.Message}\n");
+            _failed++;
+        }
+        catch (TargetInvocationException ex) when (ex.InnerException != null)
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine("✗ ERROR");
+            Console.ResetColor();
+            Console.WriteLine($"  Unexpected error: {ex.InnerException.GetType().Name}");
+            Console.WriteLine($"  {ex.InnerException.Message}");
+            if (!string.IsNullOrEmpty(ex.InnerException.StackTrace))
+            {
+                var stackLines = ex.InnerException.StackTrace.Split('\n').Take(3);
+                foreach (var line in stackLines)
+                {
+                    Console.WriteLine($"  {line.Trim()}");
+                }
+            }
+            Console.WriteLine();
             _failed++;
         }
         catch (Exception ex)
