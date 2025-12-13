@@ -7,11 +7,13 @@
 npm test                              # All tests
 npm run test:pattern -- "pattern"    # Match pattern
 npm run watch                        # Watch mode
+npm run docs:generate                # Generate TUTORIAL.md from test attributes
 
 # If you haven't modified PATH:
 ./npm-dotnet.sh test
 ./npm-dotnet.sh run test:pattern -- "pattern"
 ./npm-dotnet.sh run watch
+./npm-dotnet.sh run docs:generate
 ```
 
 ## Common Commands
@@ -47,19 +49,32 @@ EFLab/
 
 ## Writing Tests
 
-Tests are registered in `Program.cs`:
+Tests are defined in `EFLab/Tests/*Tests.cs` with the `[Tutorial]` attribute:
 
 ```csharp
-runner.RegisterTest(
-    "Test_Name_Description",
-    "Category",
-    () =>
+public static class CoreConceptsTests
+{
+    [Tutorial(
+        title: "SaveChanges Is Required for Persistence",
+        category: "Core Concepts",
+        concept: @"Entity Framework Core uses a Unit of Work pattern...",
+        pitfall: @"Common Mistake: Developers forget to call SaveChanges()...",
+        fix: @"Solution: Always call SaveChanges()...",
+        order: 1
+    )]
+    public static void Test_SaveChanges_Required_For_Persistence()
     {
-        // Your test code here
-        Assert.IsTrue(condition, "message");
+        // Test implementation
+        Assert.IsNotNull(product, "message");
     }
-);
+}
 ```
+
+The `[Tutorial]` attribute:
+- **Couples test code with documentation** - no separate docs to maintain
+- **Generates TUTORIAL.md** automatically via `npm run docs:generate`
+- **Provides context** when tests fail - explains the pitfall and fix
+- **Orders tests** with the `order` parameter
 
 ## Available Assertions
 

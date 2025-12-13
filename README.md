@@ -53,6 +53,19 @@ See [SETUP.md](SETUP.md) for detailed installation and usage instructions.
 - **Failing-First Approach** - Every example starts broken; you learn by fixing it
 - **Real Pitfalls** - Common mistakes developers make with Entity Framework
 - **In-Memory Testing** - Fast feedback loop using EF Core In-Memory provider
+- **Documentation in Code** - Tutorial notes live in `[Tutorial]` attributes alongside tests
+- **Auto-Generated Docs** - Run `npm run docs:generate` to create TUTORIAL.md from test attributes
+
+## Current Tests
+
+Run `npm test` to see all available tests. Currently includes:
+
+### Core Concepts (3 tests)
+1. **SaveChanges Is Required for Persistence** - Forgetting to call SaveChanges()
+2. **Entity State Tracking** - Understanding entity lifecycle states
+3. **Change Tracking Detects Property Changes** - How EF detects modifications
+
+More tests coming soon! Check [TUTORIAL.md](TUTORIAL.md) for detailed explanations.
 
 # Prompt
 
