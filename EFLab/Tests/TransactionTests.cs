@@ -394,4 +394,405 @@ context2.Database.UseTransaction(transaction.GetDbTransaction());
                 "Product should be rolled back, but In-Memory provider doesn't support true transactions");
         }
     }
+
+    [Tutorial(
+        title: "Sharing Transactions Across Multiple Contexts (The RIGHT Way)",
+        category: "Transactions",
+        concept: @"YES, you can share a transaction across multiple DbContext instances! This is a common pattern when using:
+- Repository pattern (different contexts for different aggregates)
+- Service layers (each service gets its own context)
+- Unit of Work pattern implementations
+- Microservices coordination
+
+**IMPORTANT: This requires a RELATIONAL database provider (SQL Server, PostgreSQL, SQLite, etc.)**
+In-Memory provider does NOT support transaction sharing via GetDbTransaction().
+
+Key steps:
+1. Parent context starts the transaction
+2. Get the underlying DbTransaction: `transaction.GetDbTransaction()`
+3. Sub-contexts call `UseTransaction(dbTransaction)` to join
+4. Parent context controls Commit/Rollback for ALL contexts
+5. All contexts must share the same database connection (for relational DBs)
+
+This is a RECOMMENDED pattern for coordinating multiple contexts in a single transaction.",
+        pitfall: @"**Common Mistake:** Not understanding that sub-contexts need explicit UseTransaction() call.
+
+This test demonstrates the CORRECT pattern:
+1. Parent starts transaction
+2. Parent makes changes
+3. Sub-context joins using UseTransaction()
+4. Sub-context can see parent's uncommitted changes
+5. Sub-context can make its own changes
+6. Parent commits - both contexts' changes are persisted
+
+The test intentionally tries to query without committing to show the transaction boundary.",
+        fix: @"**Solution - The Correct Pattern (requires relational database):**
+
+```csharp
+// This pattern works with SQL Server, PostgreSQL, SQLite, etc.
+// NOT with In-Memory provider!
+
+using var parentContext = new AppDbContext(options);
+using var transaction = parentContext.Database.BeginTransaction();
+
+// Parent context work
+parentContext.Products.Add(product1);
+parentContext.SaveChanges();
+
+// Sub-context CORRECTLY joins the transaction
+using (var subContext = new AppDbContext(options))
+{
+    subContext.Database.UseTransaction(transaction.GetDbTransaction());
+    
+    // Can see parent's uncommitted data
+    var product = subContext.Products.Find(product1.Id);
+    
+    // Can make its own changes
+    subContext.Orders.Add(order);
+    subContext.SaveChanges();
+}
+
+// Commit ALL changes from both contexts
+transaction.Commit();
+```
+
+**For In-Memory testing:** You cannot truly test this pattern. Use SQLite in-memory mode:
+```csharp
+var connection = new SqliteConnection(""DataSource=:memory:"");
+connection.Open();
+var options = new DbContextOptionsBuilder<AppDbContext>()
+    .UseSqlite(connection)
+    .Options;
+```
+
+This is the standard pattern for multi-context transactions.",
+        order: 25
+    )]
+    public static void Test_Sharing_Transaction_Across_Contexts_Correctly()
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(databaseName: "Test_Shared_Transaction_Correct")
+            .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning))
+            .Options;
+
+        int productId;
+
+        using (var parentContext = new AppDbContext(options))
+        {
+            using var transaction = parentContext.Database.BeginTransaction();
+            
+            // Parent context adds a product
+            var product = new Product { Name = "Shared Transaction Product", Price = 100m, Stock = 10 };
+            parentContext.Products.Add(product);
+            parentContext.SaveChanges();
+            productId = product.Id;
+            
+            // Sub-context CORRECTLY joins the transaction
+            using (var subContext = new AppDbContext(options))
+            {
+                // THIS IS THE KEY: Share the transaction!
+                // Note: GetDbTransaction() only works with relational databases
+                try
+                {
+                    subContext.Database.UseTransaction(transaction.GetDbTransaction());
+                }
+                catch (InvalidOperationException)
+                {
+                    // Expected with In-Memory provider - it doesn't support GetDbTransaction()
+                    // This test demonstrates the CONCEPT, but needs a real database to actually work
+                    Assert.IsTrue(false,
+                        "GetDbTransaction() requires a relational database provider. " +
+                        "In-Memory doesn't support transaction sharing. Use SQLite or SQL Server for this pattern.");
+                    return;
+                }
+                
+                // Sub-context can see parent's uncommitted changes (with real DB)
+                var foundProduct = subContext.Products.Find(productId);
+                
+                // Note: With In-Memory, this works differently (limitation)
+                // But with real DB, foundProduct would be visible here
+                
+                // Sub-context adds an order
+                var order = new Order 
+                { 
+                    CustomerName = "Transaction Customer", 
+                    OrderDate = DateTime.Now,
+                    Items = new List<OrderItem>
+                    {
+                        new OrderItem { ProductId = productId, Quantity = 2, PriceAtOrder = 100m }
+                    }
+                };
+                subContext.Orders.Add(order);
+                subContext.SaveChanges();
+            }
+            
+            // BUG: Forgot to commit! Both contexts' changes will be rolled back
+            // transaction.Commit(); // This is missing!
+        }
+
+        // Verify: Nothing should be persisted (no commit)
+        using (var verifyContext = new AppDbContext(options))
+        {
+            var product = verifyContext.Products.Find(productId);
+            var orders = verifyContext.Orders.ToList();
+            
+            // This will FAIL - changes from both contexts were rolled back
+            Assert.IsNotNull(product, "Product should exist after transaction.Commit()");
+            Assert.NotEmpty(orders, "Order should exist after transaction.Commit()");
+        }
+    }
+
+    [Tutorial(
+        title: "When Should You Use Sub-Contexts in Transactions?",
+        category: "Transactions",
+        concept: @"Sub-contexts in transactions are useful for several scenarios:
+
+**Use Cases:**
+1. **Repository Pattern**: Different repositories use different contexts for different aggregates
+2. **Service Layer Coordination**: Multiple services need to participate in one transaction
+3. **Separation of Concerns**: Different contexts handle different bounded contexts
+4. **Long-Running Workflows**: Parent orchestrates, children do specific work
+5. **Testing**: Isolate different operations while maintaining transaction control
+
+**Anti-Pattern - When NOT to use sub-contexts:**
+- Don't create sub-contexts for simple CRUD in a single bounded context
+- Don't use it to 'organize' code when one context suffices
+- Don't create hundreds of contexts (connection pool exhaustion)
+- Performance: Each context has overhead
+
+**Best Practice:**
+Use ONE context per request/unit-of-work when possible. Use sub-contexts with shared transactions only when architectural patterns demand it (repositories, services).",
+        pitfall: @"**Common Mistake:** Creating sub-contexts unnecessarily, leading to complexity without benefit.
+
+This test demonstrates:
+1. A scenario where sub-contexts make sense (repository pattern simulation)
+2. Each 'repository' (represented by a context) handles its domain
+3. Parent coordinates the transaction
+4. But the test fails because the pattern isn't always necessary
+
+The test intentionally creates unnecessary complexity to teach when to avoid this pattern.",
+        fix: @"**Solution - Use sub-contexts judiciously:**
+
+```csharp
+// GOOD: Repository pattern with transaction coordination
+public class OrderService
+{
+    public void CreateOrder(int productId, int quantity)
+    {
+        using var mainContext = new AppDbContext(options);
+        using var transaction = mainContext.Database.BeginTransaction();
+        
+        // ProductRepository uses sub-context
+        var product = GetProduct(productId, transaction);
+        
+        // OrderRepository uses another sub-context
+        CreateOrderWithItem(productId, quantity, transaction);
+        
+        transaction.Commit();
+    }
+    
+    private Product GetProduct(int id, IDbContextTransaction transaction)
+    {
+        using var productContext = new AppDbContext(options);
+        productContext.Database.UseTransaction(transaction.GetDbTransaction());
+        return productContext.Products.Find(id);
+    }
+}
+
+// BETTER: Just use one context for simple scenarios!
+using var context = new AppDbContext(options);
+var product = context.Products.Find(productId);
+context.Orders.Add(order);
+context.SaveChanges(); // Simple and clear!
+```",
+        order: 26
+    )]
+    public static void Test_When_To_Use_SubContexts_In_Transactions()
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(databaseName: "Test_SubContext_UseCase")
+            .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning))
+            .Options;
+
+        // Setup: Add a product first
+        using (var setupContext = new AppDbContext(options))
+        {
+            setupContext.Products.Add(new Product { Name = "Repository Product", Price = 50m, Stock = 100 });
+            setupContext.SaveChanges();
+        }
+
+        // Test: Simulate repository pattern (potentially over-engineered)
+        using (var mainContext = new AppDbContext(options))
+        {
+            using var transaction = mainContext.Database.BeginTransaction();
+            
+            int productId;
+            
+            // 'ProductRepository' uses sub-context
+            using (var productContext = new AppDbContext(options))
+            {
+                try
+                {
+                    productContext.Database.UseTransaction(transaction.GetDbTransaction());
+                }
+                catch (InvalidOperationException)
+                {
+                    // In-Memory doesn't support GetDbTransaction()
+                    Assert.IsTrue(false,
+                        "Transaction sharing across contexts requires a relational database. " +
+                        "In-Memory provider doesn't support this. Use SQLite or SQL Server.");
+                    return;
+                }
+                
+                var product = productContext.Products.First(p => p.Name == "Repository Product");
+                productId = product.Id;
+                
+                // Update stock
+                product.Stock -= 5;
+                productContext.SaveChanges();
+            }
+            
+            // 'OrderRepository' uses another sub-context
+            using (var orderContext = new AppDbContext(options))
+            {
+                orderContext.Database.UseTransaction(transaction.GetDbTransaction());
+                
+                var order = new Order
+                {
+                    CustomerName = "Multi-Context Customer",
+                    OrderDate = DateTime.Now,
+                    Items = new List<OrderItem>
+                    {
+                        new OrderItem { ProductId = productId, Quantity = 5, PriceAtOrder = 50m }
+                    }
+                };
+                orderContext.Orders.Add(order);
+                orderContext.SaveChanges();
+            }
+            
+            // BUG: All this complexity, but we forget to commit!
+            // transaction.Commit();
+        }
+
+        // Verify: Nothing persisted
+        using (var verifyContext = new AppDbContext(options))
+        {
+            var product = verifyContext.Products.First(p => p.Name == "Repository Product");
+            var orders = verifyContext.Orders.ToList();
+            
+            // These will FAIL - no commit means rollback
+            Assert.AreEqual(95, product.Stock, "Stock should be reduced after commit");
+            Assert.NotEmpty(orders, "Order should exist after commit");
+        }
+    }
+
+    [Tutorial(
+        title: "Nested Transactions Are Not Truly Nested (Savepoints)",
+        category: "Transactions",
+        concept: @"Most databases do NOT support true nested transactions. What happens:
+
+**Attempting 'Nested' Transactions:**
+- Calling BeginTransaction() while one is active throws an exception (SQL Server, PostgreSQL)
+- OR it's silently ignored (some providers)
+- OR it requires special savepoint support
+
+**Savepoints (Advanced):**
+Some databases support savepoints for 'nested' rollback:
+- `transaction.CreateSavepoint(""name"")` 
+- `transaction.RollbackToSavepoint(""name"")`
+- Allows partial rollback within a transaction
+- Not all providers support this
+
+**Reality:** 
+One transaction per connection. Sub-contexts share the SAME transaction, they don't create nested ones.
+
+EF Core doesn't support true nested transactions - only shared transactions across contexts.",
+        pitfall: @"**Common Mistake:** Thinking you can create nested transactions by calling BeginTransaction() multiple times.
+
+This test demonstrates:
+1. Parent context starts a transaction
+2. Sub-context tries to start its OWN transaction
+3. This either throws an exception or is ignored
+4. You cannot have independent commit/rollback for 'nested' levels
+
+The test FAILS to show this limitation.",
+        fix: @"**Solution - Use shared transactions, not nested ones:**
+
+```csharp
+// WRONG: Trying to nest transactions
+using var parent = new AppDbContext(options);
+using var parentTxn = parent.Database.BeginTransaction();
+
+using var child = new AppDbContext(options);
+using var childTxn = child.Database.BeginTransaction(); // ERROR!
+
+// RIGHT: Share the same transaction
+using var parent = new AppDbContext(options);
+using var transaction = parent.Database.BeginTransaction();
+
+using var child = new AppDbContext(options);
+child.Database.UseTransaction(transaction.GetDbTransaction()); // Correct!
+
+// For partial rollback, use savepoints (if supported):
+transaction.CreateSavepoint(""before_risky_operation"");
+try 
+{
+    // risky operation
+}
+catch 
+{
+    transaction.RollbackToSavepoint(""before_risky_operation"");
+}
+transaction.Commit();
+```",
+        order: 27
+    )]
+    public static void Test_Nested_Transactions_Are_Not_Supported()
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(databaseName: "Test_Nested_Transactions")
+            .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning))
+            .Options;
+
+        using var parentContext = new AppDbContext(options);
+        using var parentTransaction = parentContext.Database.BeginTransaction();
+        
+        // Parent makes a change
+        parentContext.Products.Add(new Product { Name = "Parent Change", Price = 100m, Stock = 10 });
+        parentContext.SaveChanges();
+        
+        // Try to create a 'nested' transaction
+        try
+        {
+            using var childContext = new AppDbContext(options);
+            
+            // BUG: Trying to start a NEW transaction (not share the existing one)
+            // With real databases, this often throws InvalidOperationException
+            // With In-Memory, it might be ignored
+            using var childTransaction = childContext.Database.BeginTransaction();
+            
+            childContext.Products.Add(new Product { Name = "Child Change", Price = 50m, Stock = 5 });
+            childContext.SaveChanges();
+            
+            // Trying to independently commit the 'child' transaction
+            childTransaction.Commit();
+            
+            // This pattern is wrong - you can't nest transactions this way!
+            Assert.IsTrue(false, 
+                "Nested transactions are not supported! " +
+                "Use shared transactions with UseTransaction() or savepoints for partial rollback.");
+        }
+        catch (InvalidOperationException)
+        {
+            // Expected with real databases
+            // Test 'fails' to teach the lesson
+            Assert.IsTrue(false, 
+                "Attempting to nest transactions throws an exception. " +
+                "Use transaction sharing with UseTransaction() instead.");
+        }
+        finally
+        {
+            parentTransaction.Rollback();
+        }
+    }
 }

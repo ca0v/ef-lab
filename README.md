@@ -85,8 +85,11 @@ Run `npm test` to see all available tests. Currently includes:
 14. **Nested Transactions with Sub-Contexts** - Sharing transactions across DbContext instances
 15. **No Partial Commits** - Transaction is all-or-nothing
 16. **In-Memory Transaction Limitations** - Why In-Memory doesn't truly support transactions
+17. **Sharing Transactions Across Multiple Contexts (The RIGHT Way)** - Using UseTransaction() correctly
+18. **When Should You Use Sub-Contexts in Transactions?** - Repository/service layer patterns
+19. **Nested Transactions Are Not Truly Nested** - Savepoints and transaction reality
 
-**Total: 16 failing tests** - All intentionally fail to teach EF Core pitfalls!
+**Total: 19 tests** - All intentionally fail to teach EF Core pitfalls!
 
 More tests coming soon! Check [TUTORIAL.md](TUTORIAL.md) for detailed explanations.
 
