@@ -278,3 +278,192 @@ Note: You don't need to load Items to delete them - cascade handles it.
 
 ---
 
+# InMemoryTesting Tests
+
+## In-Memory Database Does Not Enforce Relational Constraints
+
+**Category:** In-Memory Testing
+
+### Concept
+The EF Core In-Memory provider is great for fast tests, but it's NOT a relational database. It doesn't enforce many constraints that real databases do.
+
+Key limitations:
+- No foreign key constraints enforcement
+- No unique constraints (other than primary keys)
+- No check constraints
+- No database-side computed columns
+- No stored procedures or triggers
+- Simpler query translation (some LINQ queries that work in-memory fail on real DBs)
+
+The In-Memory provider is a fake that stores data in memory collections, not a real database engine.
+
+### The Pitfall
+**Common Mistake:** Assuming tests that pass with In-Memory will work the same way with SQL Server, PostgreSQL, etc.
+
+This test demonstrates:
+1. Creating an OrderItem with an invalid ProductId (doesn't exist)
+2. Saving it successfully with In-Memory database
+3. This would FAIL with a real database (foreign key violation)
+
+The test 'passes' with In-Memory but reveals the pitfall - your app could have bugs that only appear in production!
+
+### The Fix
+**Solution:** Understand In-Memory limitations and supplement with integration tests:
+
+```csharp
+// For unit tests: In-Memory is fast and good enough
+var options = new DbContextOptionsBuilder<AppDbContext>()
+    .UseInMemoryDatabase("test")
+    .Options;
+
+// For integration tests: Use real database or SQLite
+var options = new DbContextOptionsBuilder<AppDbContext>()
+    .UseSqlite("DataSource=:memory:")
+    .Options;
+```
+
+SQLite in-memory mode enforces constraints but is still fast for testing.
+
+
+---
+
+## In-Memory Database Does Not Persist Between Context Instances
+
+**Category:** In-Memory Testing
+
+### Concept
+Each In-Memory database instance is identified by a database name string. The data persists in memory as long as:
+
+1. At least one context using that database name exists, OR
+2. You explicitly maintain a reference to keep it alive
+
+Once all contexts are disposed and no root references exist, the data is garbage collected.
+
+This is different from SQLite :memory: which persists for the connection lifetime.
+
+### The Pitfall
+**Common Mistake:** Expecting In-Memory data to automatically persist across test methods or test classes without careful database name management.
+
+This test demonstrates:
+1. Creating a database with a unique name
+2. Adding data and disposing the context
+3. Creating a new context with the SAME database name
+4. The data should still be there... but is it?
+
+The test structure shows how database name management affects data persistence.
+
+### The Fix
+**Solution:** Share database names carefully and manage context lifecycles:
+
+```csharp
+// Option 1: Use unique DB names per test (isolated)
+UseInMemoryDatabase($"Test_{Guid.NewGuid()}")
+
+// Option 2: Share DB name across operations (persisted)
+const string sharedDbName = "SharedTestDb";
+UseInMemoryDatabase(sharedDbName)
+
+// Option 3: Keep root context alive
+var root = new AppDbContext(options);
+// Data persists while root exists
+```
+
+
+---
+
+## In-Memory Database Does Not Support Raw SQL Queries
+
+**Category:** In-Memory Testing
+
+### Concept
+The In-Memory provider does not support executing raw SQL queries because there's no SQL engine. Methods like:
+
+- FromSqlRaw()
+- FromSqlInterpolated()
+- ExecuteSqlRaw()
+- ExecuteSqlInterpolated()
+
+These will throw NotSupportedException with In-Memory provider.
+
+This is a significant limitation if your application uses stored procedures, views, or optimized SQL queries.
+
+### The Pitfall
+**Common Mistake:** Writing tests with In-Memory that never exercise your raw SQL code paths.
+
+This test:
+1. Attempts to use FromSqlRaw() to query products
+2. With In-Memory, this throws NotSupportedException
+3. Your tests pass without raw SQL, but production code uses it
+
+The test FAILS to demonstrate that In-Memory can't test raw SQL scenarios.
+
+### The Fix
+**Solution:** Use SQLite or real database for tests involving raw SQL:
+
+```csharp
+// Won't work with In-Memory:
+var products = context.Products
+    .FromSqlRaw("SELECT * FROM Products WHERE Price > {0}", 100)
+    .ToList();
+
+// For testing raw SQL, use SQLite:
+var options = new DbContextOptionsBuilder<AppDbContext>()
+    .UseSqlite("DataSource=:memory:")
+    .Options;
+
+using var connection = new SqliteConnection("DataSource=:memory:");
+connection.Open();
+// Now raw SQL works!
+```
+
+
+---
+
+## In-Memory Database Query Translation Differs from Real Databases
+
+**Category:** In-Memory Testing
+
+### Concept
+The In-Memory provider translates LINQ queries to in-memory operations, not SQL. Some queries that work in-memory will fail with real databases (and vice versa).
+
+Differences include:
+- Case sensitivity in string comparisons
+- Client-side evaluation is more permissive
+- Some SQL-specific functions don't exist in-memory
+- Date/time operations may differ
+- Collation and culture differences
+
+Tests passing with In-Memory don't guarantee the LINQ will translate to valid SQL.
+
+### The Pitfall
+**Common Mistake:** Using client-evaluated expressions that work in-memory but fail in production.
+
+This test demonstrates:
+1. A LINQ query using client-side method call
+2. It works with In-Memory (evaluates in .NET)
+3. With SQL Server, it might fail or behave differently
+
+The test intentionally uses a pattern that highlights this difference.
+
+### The Fix
+**Solution:** Be aware of query translation differences:
+
+```csharp
+// Might work in-memory but not in SQL:
+.Where(p => IsExpensive(p.Price)) // Custom method
+
+// Better - translatable to SQL:
+.Where(p => p.Price > 100)
+
+// Test with warnings enabled:
+optionsBuilder
+    .UseInMemoryDatabase("test")
+    .ConfigureWarnings(w => w.Throw(
+        InMemoryEventId.TransactionIgnoredWarning));
+```
+
+Consider using EF.Functions for database-specific operations.
+
+
+---
+

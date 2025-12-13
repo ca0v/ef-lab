@@ -73,6 +73,14 @@ Run `npm test` to see all available tests. Currently includes:
 6. **Adding Related Entities** - Inserting parent with children
 7. **Deleting Parent Deletes Children (Cascade Delete)** - Understanding cascade behavior
 
+### In-Memory Testing (4 tests)
+8. **In-Memory Does Not Enforce Relational Constraints** - Foreign keys aren't validated
+9. **In-Memory Persistence Across Contexts** - Database name management
+10. **In-Memory Does Not Support Raw SQL** - FromSqlRaw limitations
+11. **In-Memory Query Translation Differs** - LINQ behavior differences
+
+**Total: 11 failing tests** - All intentionally fail to teach EF Core pitfalls!
+
 More tests coming soon! Check [TUTORIAL.md](TUTORIAL.md) for detailed explanations.
 
 # Prompt
