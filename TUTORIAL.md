@@ -467,3 +467,241 @@ Consider using EF.Functions for database-specific operations.
 
 ---
 
+# Transaction Tests
+
+## Transactions Require Explicit Commit
+
+**Category:** Transactions
+
+### Concept
+EF Core supports explicit transactions through BeginTransaction(). This gives you control over when changes are committed or rolled back.
+
+Key points:
+- BeginTransaction() starts a transaction
+- SaveChanges() writes to the database but doesn't commit the transaction
+- Commit() makes changes permanent
+- Rollback() or Dispose() without Commit() undoes all changes
+- SaveChanges() within a transaction is atomic with Commit()
+
+Without an explicit transaction, each SaveChanges() auto-commits.
+
+### The Pitfall
+**Common Mistake:** Starting a transaction, calling SaveChanges(), but forgetting to Commit().
+
+This test demonstrates:
+1. BeginTransaction() starts a transaction
+2. SaveChanges() executes SQL but doesn't commit
+3. Transaction is disposed without Commit()
+4. All changes are rolled back automatically
+
+The test FAILS because the product was never committed to the database.
+
+### The Fix
+**Solution:** Always call Commit() on transactions:
+
+```csharp
+using var transaction = context.Database.BeginTransaction();
+try
+{
+    context.Products.Add(product);
+    context.SaveChanges();
+    transaction.Commit(); // Make it permanent!
+}
+catch
+{
+    transaction.Rollback(); // Or let Dispose() roll back
+    throw;
+}
+```
+
+
+---
+
+## Rollback Undoes All Changes in Transaction
+
+**Category:** Transactions
+
+### Concept
+Transactions provide atomicity - either all changes succeed or all fail together. Rollback() explicitly undoes all changes made within the transaction.
+
+Key points:
+- Rollback() undoes all operations since BeginTransaction()
+- Multiple SaveChanges() calls within a transaction are all rolled back
+- Dispose() without Commit() implicitly rolls back
+- Rollback is useful for error handling
+- Changes are only visible within the transaction until committed
+
+### The Pitfall
+**Common Mistake:** Not understanding that Rollback() undoes ALL changes, not just the last SaveChanges().
+
+This test demonstrates:
+1. Add multiple products in a transaction
+2. SaveChanges() after each add
+3. Explicitly call Rollback()
+4. All products are gone, not just the last one
+
+The test intentionally expects one product to remain (it won't).
+
+### The Fix
+**Solution:** Understand rollback affects the entire transaction:
+
+```csharp
+using var transaction = context.Database.BeginTransaction();
+
+context.Products.Add(product1);
+context.SaveChanges(); // Executed but not committed
+
+context.Products.Add(product2);
+context.SaveChanges(); // Executed but not committed
+
+transaction.Rollback(); // Both products are undone!
+// Neither product exists in the database
+```
+
+
+---
+
+## Nested Transactions with Sub-Contexts Share Parent Transaction
+
+**Category:** Transactions
+
+### Concept
+When you create a sub-context (child DbContext) and want it to participate in a parent's transaction, you must explicitly use UseTransaction() to share the transaction.
+
+Key points:
+- Each DbContext has its own connection by default
+- Sub-contexts don't automatically share parent transactions
+- Use context.Database.UseTransaction() to share a transaction
+- Both contexts must use the same underlying database connection
+- The parent transaction controls commit/rollback for all participating contexts
+
+### The Pitfall
+**Common Mistake:** Creating a sub-context and assuming it automatically participates in the parent's transaction.
+
+This test demonstrates:
+1. Parent context starts a transaction
+2. Parent adds a product and saves
+3. Sub-context is created (without UseTransaction)
+4. Sub-context tries to query the product
+5. Product is not visible because sub-context is in a different transaction!
+
+The test FAILS because the sub-context can't see uncommitted changes from the parent.
+
+### The Fix
+**Solution:** Share the transaction explicitly:
+
+```csharp
+using var parentContext = new AppDbContext(options);
+using var transaction = parentContext.Database.BeginTransaction();
+
+parentContext.Products.Add(product);
+parentContext.SaveChanges();
+
+// Sub-context must use the same transaction
+using var subContext = new AppDbContext(options);
+subContext.Database.UseTransaction(transaction.GetDbTransaction());
+
+// Now subContext can see parent's uncommitted changes
+var product = subContext.Products.Find(id);
+```
+
+
+---
+
+## Partial Commits Don't Exist - Transaction is All or Nothing
+
+**Category:** Transactions
+
+### Concept
+A transaction is atomic - you cannot partially commit some changes and rollback others. Once you commit, ALL changes in the transaction are permanent.
+
+Key points:
+- Commit() applies all SaveChanges() calls in the transaction
+- You cannot selectively commit individual operations
+- To have different commit boundaries, use separate transactions
+- Nested transactions are not truly nested - they share the same underlying transaction
+- Savepoints can provide partial rollback in some databases (advanced topic)
+
+### The Pitfall
+**Common Mistake:** Thinking you can commit some changes and rollback others within the same transaction.
+
+This test demonstrates:
+1. Add multiple products in a transaction
+2. Call SaveChanges() after each
+3. Try to 'partially commit' by calling Commit() in the middle
+4. Then try to rollback remaining changes
+
+In reality, Commit() ends the transaction - you can't continue it!
+
+### The Fix
+**Solution:** Use separate transactions for independent commit boundaries:
+
+```csharp
+// Transaction 1: Commit these changes
+using (var transaction1 = context.Database.BeginTransaction())
+{
+    context.Products.Add(product1);
+    context.SaveChanges();
+    transaction1.Commit(); // These are permanent
+}
+
+// Transaction 2: Can rollback independently
+using (var transaction2 = context.Database.BeginTransaction())
+{
+    context.Products.Add(product2);
+    context.SaveChanges();
+    transaction2.Rollback(); // Only affects transaction2
+}
+```
+
+
+---
+
+## Multiple Contexts with Shared Transaction Must Use Same Connection
+
+**Category:** Transactions
+
+### Concept
+When multiple DbContext instances need to share a transaction, they must share the same underlying database connection. In-Memory provider handles this differently than relational databases.
+
+Key points:
+- Relational databases: Use the same DbConnection for all contexts
+- In-Memory: Transactions are largely ignored (limitation!)
+- For real databases, create connection first, then contexts
+- All contexts must call UseTransaction() with the shared transaction
+- The connection must remain open for the duration of the transaction
+
+### The Pitfall
+**Common Mistake:** With In-Memory provider, transaction behavior differs from real databases.
+
+This test demonstrates:
+1. In-Memory provider doesn't truly support transactions across contexts
+2. Transaction.Commit() and Rollback() are essentially no-ops
+3. Changes are immediately visible regardless of transaction state
+
+The test FAILS to highlight this In-Memory limitation.
+
+### The Fix
+**Solution:** Use SQLite or real database for transaction testing:
+
+```csharp
+// For real database transaction testing:
+using var connection = new SqliteConnection("DataSource=:memory:");
+connection.Open();
+
+var options = new DbContextOptionsBuilder<AppDbContext>()
+    .UseSqlite(connection)
+    .Options;
+
+using var context1 = new AppDbContext(options);
+using var transaction = context1.Database.BeginTransaction();
+
+using var context2 = new AppDbContext(options);
+context2.Database.UseTransaction(transaction.GetDbTransaction());
+
+// Now both contexts share the same real transaction
+```
+
+
+---
+

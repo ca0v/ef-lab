@@ -79,7 +79,14 @@ Run `npm test` to see all available tests. Currently includes:
 10. **In-Memory Does Not Support Raw SQL** - FromSqlRaw limitations
 11. **In-Memory Query Translation Differs** - LINQ behavior differences
 
-**Total: 11 failing tests** - All intentionally fail to teach EF Core pitfalls!
+### Transactions (5 tests)
+12. **Transactions Require Explicit Commit** - Forgetting to call Commit()
+13. **Rollback Undoes All Changes** - Understanding transaction atomicity
+14. **Nested Transactions with Sub-Contexts** - Sharing transactions across DbContext instances
+15. **No Partial Commits** - Transaction is all-or-nothing
+16. **In-Memory Transaction Limitations** - Why In-Memory doesn't truly support transactions
+
+**Total: 16 failing tests** - All intentionally fail to teach EF Core pitfalls!
 
 More tests coming soon! Check [TUTORIAL.md](TUTORIAL.md) for detailed explanations.
 
