@@ -1,0 +1,62 @@
+# .gitignore for .NET projects
+
+# Build results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+# Visual Studio cache/options directory
+.vs/
+
+# .NET Core
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# NuGet Packages
+*.nupkg
+*.snupkg
+**/packages/*
+
+# Entity Framework migrations (optional - uncomment if needed)
+# **/Migrations/
+
+# Test Results
+TestResults/
+
+# Node.js (for npm scripts)
+node_modules/
+npm-debug.log*
+
+# .NET installer script
+dotnet-install.sh
+
+# User-specific files
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Database files
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Mac
+.DS_Store
+
+# Rider
+.idea/
+*.sln.iml

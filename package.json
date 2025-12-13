@@ -1,0 +1,35 @@
+{
+  "name": "ef-lab",
+  "version": "1.0.0",
+  "description": "Entity Framework tutorial with failing-first unit tests",
+  "scripts": {
+    "preinstall": "command -v dotnet >/dev/null 2>&1 || echo 'WARNING: dotnet SDK not found. Run: npm run install:dotnet:help'",
+    "install:dotnet:help": "echo '\n=== .NET SDK Installation ===' && echo 'Ubuntu/Debian: wget https://dot.net/v1/dotnet-install.sh && chmod +x dotnet-install.sh && ./dotnet-install.sh --channel 8.0' && echo 'Then add to PATH: export PATH=$PATH:$HOME/.dotnet' && echo 'Or install via package manager: https://learn.microsoft.com/en-us/dotnet/core/install/linux' && echo '===========================\n'",
+    "install:dotnet:script": "wget https://dot.net/v1/dotnet-install.sh && chmod +x dotnet-install.sh && ./dotnet-install.sh --channel 8.0 && echo '\nAdd to your ~/.bashrc:\nexport DOTNET_ROOT=$HOME/.dotnet\nexport PATH=$PATH:$HOME/.dotnet:$HOME/.dotnet/tools'",
+    "install:ef": "dotnet nuget locals all --clear && dotnet tool install --global dotnet-ef --version 8.0.11",
+    "update:ef": "dotnet tool update --global dotnet-ef",
+    "setup": "npm run check:dotnet && npm run init:project && npm run install:ef",
+    "check:dotnet": "command -v dotnet >/dev/null 2>&1 || (echo 'ERROR: dotnet not found. Run: npm run install:dotnet:help' && exit 1)",
+    "setup:path": "echo 'export PATH=\"$PATH:$HOME/.dotnet/tools\"' >> ~/.bashrc && echo 'PATH updated. Run: source ~/.bashrc'",
+    "init:project": "mkdir -p EFLab && cp .templates/EFLab.csproj EFLab/ && cp .templates/Program.cs EFLab/ && mkdir -p EFLab/Testing && cp .templates/Assert.cs EFLab/Testing/ && cp .templates/TestRunner.cs EFLab/Testing/ && dotnet restore EFLab/EFLab.csproj",
+    "build": "dotnet build EFLab/EFLab.csproj",
+    "test": "dotnet run --project EFLab/EFLab.csproj",
+    "test:pattern": "dotnet run --project EFLab/EFLab.csproj -- --test",
+    "clean": "dotnet clean EFLab/EFLab.csproj && rm -rf EFLab/bin EFLab/obj",
+    "watch": "dotnet watch run --project EFLab/EFLab.csproj",
+    "ef:list": "dotnet ef",
+    "ef:migrations:add": "dotnet ef migrations add",
+    "ef:migrations:list": "dotnet ef migrations list --project EFLab/EFLab.csproj",
+    "ef:database:update": "dotnet ef database update --project EFLab/EFLab.csproj",
+    "ef:database:drop": "dotnet ef database drop --project EFLab/EFLab.csproj --force"
+  },
+  "keywords": [
+    "entity-framework",
+    "dotnet",
+    "tutorial",
+    "testing",
+    "in-memory-database"
+  ],
+  "author": "",
+  "license": "MIT"
+}
