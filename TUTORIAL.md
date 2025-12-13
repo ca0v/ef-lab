@@ -467,6 +467,323 @@ Consider using EF.Functions for database-specific operations.
 
 ---
 
+# NoTracking Tests
+
+## No-Tracking Queries Cannot Be Modified and Saved
+
+**Category:** No-Tracking Queries
+
+### Concept
+AsNoTracking() tells EF Core to NOT track entities in the change tracker. This improves query performance when you only need read-only data.
+
+Key points:
+- AsNoTracking() entities are not tracked by the DbContext
+- Modifying properties has no effect on SaveChanges()
+- Better performance (no snapshot creation, no change detection)
+- Useful for read-only scenarios (reports, displays, DTOs)
+- Entity state is Detached (not tracked)
+
+Without AsNoTracking(), all queried entities are tracked by default.
+
+### The Pitfall
+**Common Mistake:** Using AsNoTracking() and then trying to modify and save the entity.
+
+This test demonstrates:
+1. Query a product using AsNoTracking()
+2. Modify the product's price
+3. Call SaveChanges()
+4. The change is NOT persisted (entity not tracked!)
+
+The test FAILS because the modified price was never saved to the database.
+
+### The Fix
+**Solution:** Don't use AsNoTracking() if you need to modify entities:
+
+```csharp
+// For read-only: AsNoTracking (better performance)
+var product = context.Products
+    .AsNoTracking()
+    .First(p => p.Id == id);
+// Cannot save changes to this entity
+
+// For modifications: Regular tracking query
+var product = context.Products
+    .First(p => p.Id == id);
+product.Price = 200m;
+context.SaveChanges(); // This works!
+```
+
+Or attach the entity if you must modify a no-tracking entity:
+```csharp
+var product = context.Products.AsNoTracking().First();
+context.Attach(product); // Now it's tracked
+product.Price = 200m;
+context.SaveChanges();
+```
+
+
+---
+
+## Tracking the Same Entity Twice Causes Conflict
+
+**Category:** No-Tracking Queries
+
+### Concept
+EF Core's change tracker can only track ONE instance of an entity with a given primary key. If you try to track the same entity twice, you get an InvalidOperationException.
+
+Common scenarios that cause this:
+- Query the same entity twice in the same context
+- Update an entity, then query it again
+- Attach an entity that's already being tracked
+- Multiple includes or joins returning the same entity
+
+The error: 'The instance of entity type 'X' cannot be tracked because another instance with the same key value is already being tracked.'
+
+This is EF Core's way of preventing data inconsistency.
+
+### The Pitfall
+**Common Mistake:** Querying the same entity twice and trying to track both instances.
+
+This test demonstrates:
+1. Query a product (tracked)
+2. Query the same product again (creates conflict)
+3. EF Core throws InvalidOperationException
+
+The test FAILS because you cannot track the same entity twice.
+
+### The Fix
+**Solution:** Use AsNoTracking() for queries when entity is already tracked:
+
+```csharp
+// First query: Tracked
+var product1 = context.Products.Find(1);
+
+// Second query: Use AsNoTracking to avoid conflict
+var product2 = context.Products
+    .AsNoTracking()
+    .First(p => p.Id == 1);
+
+// Now both can coexist without conflict
+```
+
+Or use the same tracked instance:
+```csharp
+var product = context.Products.Find(1);
+// Use 'product' everywhere, don't re-query
+```
+
+Or clear tracking:
+```csharp
+context.ChangeTracker.Clear(); // Detach everything
+```
+
+
+---
+
+## Update Conflict: Attaching Entity Already Being Tracked
+
+**Category:** No-Tracking Queries
+
+### Concept
+A common scenario for tracking conflicts is the 'disconnected entity' pattern:
+1. Load entity in one context (e.g., web request)
+2. Modify it in memory (e.g., user edits form)
+3. Try to save it in a new context (e.g., next request)
+
+If you're not careful, the entity might already be tracked when you try to attach/update it.
+
+Methods that trigger tracking:
+- Attach(entity)
+- Update(entity)
+- Entry(entity).State = Modified
+- Find(), First(), etc. (without AsNoTracking)
+
+All these fail if the entity is already tracked.
+
+### The Pitfall
+**Common Mistake:** Loading an entity, then trying to attach/update a different instance with the same ID.
+
+This test demonstrates:
+1. Load a product (tracked)
+2. Create a new instance with the same ID (disconnected)
+3. Try to update/attach the new instance
+4. Tracking conflict occurs!
+
+The test FAILS to show this common web application scenario.
+
+### The Fix
+**Solution - Several approaches:**
+
+**1. Use AsNoTracking when loading:**
+```csharp
+var product = context.Products
+    .AsNoTracking()
+    .First(p => p.Id == id);
+// Now can attach modified version later
+```
+
+**2. Use ChangeTracker.Clear():**
+```csharp
+var product = context.Products.Find(id);
+context.ChangeTracker.Clear(); // Detach everything
+context.Update(modifiedProduct); // Now works
+context.SaveChanges();
+```
+
+**3. Check and modify existing tracked entity:**
+```csharp
+var tracked = context.Products.Local.FirstOrDefault(p => p.Id == id);
+if (tracked != null)
+{
+    context.Entry(tracked).CurrentValues.SetValues(modifiedProduct);
+}
+else
+{
+    context.Update(modifiedProduct);
+}
+```
+
+**4. Detach specific entity:**
+```csharp
+context.Entry(existingProduct).State = EntityState.Detached;
+context.Update(modifiedProduct);
+```
+
+
+---
+
+## AsNoTracking Improves Performance for Read-Only Queries
+
+**Category:** No-Tracking Queries
+
+### Concept
+AsNoTracking() provides significant performance benefits for read-only scenarios:
+
+**Performance improvements:**
+- No snapshot creation (saves memory)
+- No change detection overhead
+- Faster queries (less processing)
+- Lower memory usage (no tracking data structures)
+- Better for large result sets
+
+**When to use AsNoTracking:**
+- Read-only displays (list views, reports)
+- DTOs that will be transformed
+- Data that won't be modified
+- Large result sets
+- Performance-critical queries
+
+**When NOT to use:**
+- You need to modify the entity
+- You need to load related entities and navigate them
+- You're updating data
+
+Global setting: `optionsBuilder.UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking)`
+
+### The Pitfall
+**Common Mistake:** Not using AsNoTracking() for read-only queries, wasting resources.
+
+This test demonstrates:
+1. Query without AsNoTracking (tracked, slower)
+2. Query with AsNoTracking (not tracked, faster)
+3. Both return data, but performance differs
+
+The test intentionally shows the 'problem' of over-tracking.
+
+### The Fix
+**Solution:** Use AsNoTracking for read-only queries:
+
+```csharp
+// Read-only list display
+var products = context.Products
+    .AsNoTracking()
+    .Where(p => p.Stock > 0)
+    .ToList();
+
+// Read-only with includes
+var orders = context.Orders
+    .AsNoTracking()
+    .Include(o => o.Items)
+    .Where(o => o.OrderDate > startDate)
+    .ToList();
+
+// Set globally for read-heavy applications
+optionsBuilder.UseQueryTrackingBehavior(
+    QueryTrackingBehavior.NoTracking);
+
+// Override per query when needed
+var tracked = context.Products.AsTracking().First();
+```
+
+Benchmark your queries to see the impact (especially with large datasets).
+
+
+---
+
+## AsNoTrackingWithIdentityResolution Prevents Duplicate Instances
+
+**Category:** No-Tracking Queries
+
+### Concept
+EF Core 5.0+ introduced AsNoTrackingWithIdentityResolution():
+
+**AsNoTracking():**
+- Doesn't track entities
+- Can return multiple instances of the same entity (different objects, same ID)
+- Best performance
+- Problem: Navigation properties might point to different instances
+
+**AsNoTrackingWithIdentityResolution():**
+- Doesn't track entities for SaveChanges
+- Returns only ONE instance per entity ID (identity resolution)
+- Navigation properties reference the same instance
+- Slightly slower than AsNoTracking, faster than tracking
+- Useful for queries with includes/joins
+
+This solves a common problem with AsNoTracking and related entities.
+
+### The Pitfall
+**Common Mistake:** Using AsNoTracking() with includes and getting duplicate instances of the same entity.
+
+This test demonstrates:
+1. Query orders with items using AsNoTracking
+2. Multiple OrderItems might reference different Product instances with same ID
+3. This can cause confusion in business logic
+
+The test shows when identity resolution matters.
+
+### The Fix
+**Solution:** Use AsNoTrackingWithIdentityResolution when you need consistent instances:
+
+```csharp
+// Problem: Multiple instances of same entity
+var orders = context.Orders
+    .AsNoTracking()
+    .Include(o => o.Items)
+        .ThenInclude(i => i.Product)
+    .ToList();
+// OrderItems might have different Product instances with same ID!
+
+// Solution: Identity resolution
+var orders = context.Orders
+    .AsNoTrackingWithIdentityResolution()
+    .Include(o => o.Items)
+        .ThenInclude(i => i.Product)
+    .ToList();
+// OrderItems share the same Product instance per ID
+
+// Or just use tracking if you need modifications
+var orders = context.Orders
+    .Include(o => o.Items)
+        .ThenInclude(i => i.Product)
+    .ToList();
+```
+
+Choose based on your needs: Performance vs. Identity consistency.
+
+
+---
+
 # Transaction Tests
 
 ## Transactions Require Explicit Commit

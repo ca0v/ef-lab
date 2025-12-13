@@ -79,7 +79,7 @@ Run `npm test` to see all available tests. Currently includes:
 10. **In-Memory Does Not Support Raw SQL** - FromSqlRaw limitations
 11. **In-Memory Query Translation Differs** - LINQ behavior differences
 
-### Transactions (5 tests)
+### Transactions (8 tests)
 12. **Transactions Require Explicit Commit** - Forgetting to call Commit()
 13. **Rollback Undoes All Changes** - Understanding transaction atomicity
 14. **Nested Transactions with Sub-Contexts** - Sharing transactions across DbContext instances
@@ -89,7 +89,14 @@ Run `npm test` to see all available tests. Currently includes:
 18. **When Should You Use Sub-Contexts in Transactions?** - Repository/service layer patterns
 19. **Nested Transactions Are Not Truly Nested** - Savepoints and transaction reality
 
-**Total: 19 tests** - All intentionally fail to teach EF Core pitfalls!
+### No-Tracking Queries (5 tests)
+20. **No-Tracking Queries Cannot Be Modified and Saved** - AsNoTracking entities are read-only
+21. **Tracking the Same Entity Twice Causes Conflict** - The common "already being tracked" error
+22. **Update Conflict: Attaching Entity Already Being Tracked** - Disconnected entity pattern pitfall
+23. **AsNoTracking Improves Performance** - When and why to use AsNoTracking
+24. **AsNoTrackingWithIdentityResolution** - Preventing duplicate instances
+
+**Total: 24 tests** - All intentionally fail to teach EF Core pitfalls!
 
 More tests coming soon! Check [TUTORIAL.md](TUTORIAL.md) for detailed explanations.
 
