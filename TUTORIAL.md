@@ -467,6 +467,339 @@ Consider using EF.Functions for database-specific operations.
 
 ---
 
+# ManyToMany Tests
+
+## Implicit Many-to-Many: Adding Duplicates Silently
+
+**Category:** Many-to-Many Relationships
+
+### Concept
+EF Core 5.0+ supports implicit many-to-many relationships where EF automatically creates and manages the join table.
+
+Key points:
+- Define collection navigation properties on both entities
+- No explicit join entity class needed
+- EF creates the join table automatically
+- Convention-based naming: {Entity1}{Entity2} (e.g., StudentCourse)
+- Simpler code, less boilerplate
+- Use for simple relationships without additional data
+
+Example:
+```csharp
+class Student { public List<Course> Courses { get; set; } }
+class Course { public List<Student> Students { get; set; } }
+```
+
+EF automatically creates StudentCourse join table with StudentId and CourseId.
+
+### The Pitfall
+**Common Mistake:** Adding the same relationship twice creates duplicate join entries.
+
+This test demonstrates:
+1. Create a Student enrolled in a Course
+2. Later, add the same Course to the Student again
+3. EF doesn't prevent duplicate entries in the join table
+4. SaveChanges succeeds but creates duplicate relationship
+
+The test FAILS because we end up with duplicate Student-Course entries.
+
+### The Fix
+**Solution:** Check if the relationship already exists before adding:
+
+```csharp
+// Bad: Blindly adding
+student.Courses.Add(courseFromDb);
+context.SaveChanges(); // Might create duplicate
+
+// Good: Check first
+if (!student.Courses.Any(c => c.Id == courseId))
+{
+    student.Courses.Add(courseFromDb);
+}
+
+// Or use HashSet instead of List
+public HashSet<Course> Courses { get; set; } = new();
+
+// Or query to check
+var isEnrolled = context.Students
+    .Where(s => s.Id == studentId)
+    .SelectMany(s => s.Courses)
+    .Any(c => c.Id == courseId);
+if (!isEnrolled)
+{
+    student.Courses.Add(course);
+}
+```
+
+Always verify relationships before adding to prevent duplicates.
+
+
+---
+
+## Explicit Many-to-Many: Required for Custom Join Data
+
+**Category:** Many-to-Many Relationships
+
+### Concept
+Explicit many-to-many relationships require a join entity class when you need additional data on the relationship itself.
+
+Common scenarios:
+- DateAdded/CreatedDate on the relationship
+- Status/Role information
+- Priority/Order values
+- Hours allocated or other metrics
+- Additional metadata
+
+Example with EmployeeProject join entity:
+```csharp
+class Employee { public List<EmployeeProject> EmployeeProjects { get; set; } }
+class Project { public List<EmployeeProject> EmployeeProjects { get; set; } }
+class EmployeeProject 
+{
+    public int EmployeeId { get; set; }
+    public Employee Employee { get; set; }
+    public int ProjectId { get; set; }
+    public Project Project { get; set; }
+    public DateTime AssignedDate { get; set; }
+    public string Role { get; set; } // e.g., "Lead", "Developer"
+    public int HoursAllocated { get; set; }
+}
+```
+
+You navigate through the join entity: employee.EmployeeProjects[0].Project
+
+### The Pitfall
+**Common Mistake:** Forgetting to set composite key or missing required join entity properties.
+
+This test demonstrates:
+1. Define explicit join entity but forget composite key
+2. Or forget to set required properties on the join entity
+3. Relationship doesn't work as expected
+
+The test FAILS to show proper explicit relationship setup.
+
+### The Fix
+**Solution:** Properly configure the join entity with composite key:
+
+```csharp
+// In DbContext.OnModelCreating:
+modelBuilder.Entity<EmployeeProject>()
+    .HasKey(ep => new { ep.EmployeeId, ep.ProjectId }); // Composite key
+
+modelBuilder.Entity<EmployeeProject>()
+    .HasOne(ep => ep.Employee)
+    .WithMany(e => e.EmployeeProjects)
+    .HasForeignKey(ep => ep.EmployeeId);
+
+modelBuilder.Entity<EmployeeProject>()
+    .HasOne(ep => ep.Project)
+    .WithMany(p => p.EmployeeProjects)
+    .HasForeignKey(ep => ep.ProjectId);
+```
+
+When adding relationships, create the join entity:
+```csharp
+var employeeProject = new EmployeeProject
+{
+    EmployeeId = employeeId,
+    ProjectId = projectId,
+    AssignedDate = DateTime.Now,
+    Role = "Lead Developer",
+    HoursAllocated = 40
+};
+context.EmployeeProjects.Add(employeeProject);
+```
+
+
+---
+
+## Removing Many-to-Many Relationships Without Deleting Entities
+
+**Category:** Many-to-Many Relationships
+
+### Concept
+Removing a many-to-many relationship means deleting the join table entry, NOT the related entities.
+
+Key points:
+- Remove from collection navigation (implicit)
+- Delete join entity (explicit)
+- Original entities remain in the database
+- Only the relationship is removed
+
+Common confusion: Remove vs. Delete
+- Remove(entity): Removes from collection
+- Remove(joinEntity): Deletes join table row
+- Both entities (Student, Course) stay in database
+
+### The Pitfall
+**Common Mistake:** Trying to remove relationship but accidentally deleting the entity itself.
+
+This test demonstrates:
+1. Student has multiple Courses
+2. Try to remove one Course from Student
+3. But the approach might delete the Course entity instead of just the relationship
+
+The test FAILS to show proper relationship removal.
+
+### The Fix
+**Solution - Implicit Many-to-Many:**
+```csharp
+// Load student with courses
+var student = context.Students
+    .Include(s => s.Courses)
+    .First(s => s.Id == studentId);
+
+// Find and remove the course from collection
+var courseToRemove = student.Courses.First(c => c.Code == "CS402");
+student.Courses.Remove(courseToRemove);
+context.SaveChanges(); // Only join entry deleted
+```
+
+**Solution - Explicit Many-to-Many:**
+```csharp
+// Find the join entity
+var employeeProject = context.EmployeeProjects
+    .First(ep => ep.EmployeeId == employeeId && ep.ProjectId == projectId);
+
+// Remove the join entity (not the Project itself)
+context.EmployeeProjects.Remove(employeeProject);
+context.SaveChanges();
+
+// Project entity still exists in Projects table
+```
+
+Never use context.Courses.Remove() unless you want to delete the Course entity!
+
+
+---
+
+## Cascading Many-to-Many: Deleting Entity Removes Relationships
+
+**Category:** Many-to-Many Relationships
+
+### Concept
+When you delete an entity involved in a many-to-many relationship, EF should automatically delete the join table entries.
+
+Default behavior:
+- Delete Employee: All EmployeeProject entries deleted (cascade)
+- Delete Project: All EmployeeProject entries deleted (cascade)
+- Join table entries are dependent data
+
+Configure cascade delete:
+```csharp
+modelBuilder.Entity<EmployeeProject>()
+    .HasOne(ep => ep.Employee)
+    .WithMany(e => e.EmployeeProjects)
+    .OnDelete(DeleteBehavior.Cascade); // Default
+```
+
+This prevents orphaned join table entries.
+
+### The Pitfall
+**Common Mistake:** Deleting entity without loading relationships, leaving orphaned join entries.
+
+This test demonstrates:
+1. Employee has Projects (join entries exist)
+2. Delete Employee without loading Projects
+3. Join entries might become orphaned (depending on cascade delete configuration)
+
+The test shows what happens with improper deletion.
+
+### The Fix
+**Solution:** EF Core handles cascade delete automatically for properly configured relationships:
+
+```csharp
+// Explicit many-to-many: EF handles it
+var employee = context.Employees.Find(employeeId);
+context.Employees.Remove(employee);
+context.SaveChanges(); // Join entries deleted automatically
+
+// Configure cascade properly
+modelBuilder.Entity<EmployeeProject>()
+    .HasOne(ep => ep.Employee)
+    .WithMany(e => e.EmployeeProjects)
+    .OnDelete(DeleteBehavior.Cascade);
+```
+
+No need to manually delete join entities if cascade is configured correctly.
+
+With In-Memory database, cascade delete might not work as expected (limitation). Use SQLite for realistic testing.
+
+
+---
+
+## Querying Many-to-Many: Include vs. ThenInclude
+
+**Category:** Many-to-Many Relationships
+
+### Concept
+Querying many-to-many relationships requires understanding Include() and ThenInclude():
+
+**Implicit Many-to-Many (Student-Course):**
+```csharp
+// Direct navigation
+var students = context.Students
+    .Include(s => s.Courses)
+    .ToList();
+// students[0].Courses is populated
+```
+
+**Explicit Many-to-Many (Employee-Project):**
+```csharp
+// Must navigate through join entity
+var employees = context.Employees
+    .Include(e => e.EmployeeProjects)
+        .ThenInclude(ep => ep.Project)
+    .ToList();
+// employees[0].EmployeeProjects[0].Project is populated
+```
+
+ThenInclude chains navigation from the included collection.
+
+### The Pitfall
+**Common Mistake:** Forgetting Include() or using wrong navigation path for explicit relationships.
+
+This test demonstrates:
+1. Query students expecting courses
+2. Forget to Include relationships
+3. Navigation properties are null/empty
+
+The test FAILS to show proper eager loading.
+
+### The Fix
+**Solution - Implicit Relationships:**
+```csharp
+var students = context.Students
+    .Include(s => s.Courses)
+    .ToList();
+// students[0].Courses is loaded
+```
+
+**Solution - Explicit Relationships:**
+```csharp
+// Wrong: This loads EmployeeProjects but not Projects
+var employees = context.Employees
+    .Include(e => e.EmployeeProjects)
+    .ToList();
+// employees[0].EmployeeProjects[0].Project is NULL!
+
+// Correct: Use ThenInclude
+var employees = context.Employees
+    .Include(e => e.EmployeeProjects)
+        .ThenInclude(ep => ep.Project)
+    .ToList();
+// employees[0].EmployeeProjects[0].Project is loaded
+
+// Can chain further
+var employees = context.Employees
+    .Include(e => e.EmployeeProjects)
+        .ThenInclude(ep => ep.Project)
+    .ToList();
+```
+
+
+---
+
 # NoTracking Tests
 
 ## No-Tracking Queries Cannot Be Modified and Saved

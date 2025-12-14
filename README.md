@@ -96,7 +96,14 @@ Run `npm test` to see all available tests. Currently includes:
 23. **AsNoTracking Improves Performance** - When and why to use AsNoTracking
 24. **AsNoTrackingWithIdentityResolution** - Preventing duplicate instances
 
-**Total: 24 tests** - All intentionally fail to teach EF Core pitfalls!
+### Many-to-Many Relationships (5 tests)
+25. **Implicit Many-to-Many: Adding Duplicates Silently** - Preventing duplicate relationships
+26. **Explicit Many-to-Many: Required for Custom Join Data** - Join entities with additional properties
+27. **Removing Many-to-Many Relationships Without Deleting Entities** - Proper relationship removal
+28. **Cascading Many-to-Many: Deleting Entity Removes Relationships** - Cascade delete behavior
+29. **Querying Many-to-Many: Include vs. ThenInclude** - Proper eager loading with Include/ThenInclude
+
+**Total: 29 tests** - All intentionally fail to teach EF Core pitfalls!
 
 More tests coming soon! Check [TUTORIAL.md](TUTORIAL.md) for detailed explanations.
 
