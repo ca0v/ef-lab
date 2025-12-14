@@ -67,6 +67,23 @@ public static class DatabaseProvider
     }
 
     /// <summary>
+    /// Creates a context and ensures database is created (if SQLite)
+    /// Use this for the first context in a test to ensure schema exists
+    /// </summary>
+    public static AppDbContext CreateContextWithOptions(DbContextOptions<AppDbContext> options)
+    {
+        var context = new AppDbContext(options);
+        
+        if (_currentProvider == Provider.SQLite)
+        {
+            // Ensure database and schema are created
+            context.Database.EnsureCreated();
+        }
+        
+        return context;
+    }
+
+    /// <summary>
     /// Cleans up test database (for SQLite)
     /// </summary>
     public static void CleanupDatabase(AppDbContext context)

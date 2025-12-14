@@ -422,14 +422,12 @@ With In-Memory database, cascade delete might not work as expected (limitation).
     )]
     public static void Test_Deleting_Entity_Should_Remove_All_Relationships()
     {
-        var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseInMemoryDatabase(databaseName: "Test_Cascade_ManyToMany")
-            .Options;
+        var options = DatabaseProvider.CreateOptions("Test_Cascade_ManyToMany");
 
         int employeeId;
 
         // Setup: Employee with projects
-        using (var context = new AppDbContext(options))
+        using (var context = DatabaseProvider.CreateContextWithOptions(options))
         {
             var employee = new Employee { Name = "Temp Employee", Department = "IT" };
             var project1 = new Project { Name = "Project Alpha", Description = "First Project" };
@@ -482,8 +480,9 @@ With In-Memory database, cascade delete might not work as expected (limitation).
             Assert.AreEqual(0, orphanedJoinEntries.Count,
                 "Join table entries should be deleted when entity is deleted! " +
                 "Configure cascade delete: OnDelete(DeleteBehavior.Cascade). " +
-                "In-Memory database may not enforce cascade delete (limitation). " +
-                $"Found {orphanedJoinEntries.Count} orphaned entries.");
+                $"In-Memory database may not enforce cascade delete (limitation). " +
+                $"Found {orphanedJoinEntries.Count} orphaned entries. " +
+                $"Using {DatabaseProvider.GetProviderName()} provider.");
         }
     }
 

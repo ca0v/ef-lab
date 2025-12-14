@@ -449,14 +449,12 @@ Note: You don't need to load Items to delete them - cascade handles it.",
     )]
     public static void Test_Cascade_Delete_Requires_SaveChanges()
     {
-        var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseInMemoryDatabase(databaseName: "Test_Cascade_Delete")
-            .Options;
+        var options = DatabaseProvider.CreateOptions("Test_Cascade_Delete");
 
         int orderId;
 
         // Setup: Create order with items
-        using (var context = new AppDbContext(options))
+        using (var context = DatabaseProvider.CreateContextWithOptions(options))
         {
             var product = new Product { Name = "Webcam", Price = 79.99m, Stock = 25 };
             context.Products.Add(product);

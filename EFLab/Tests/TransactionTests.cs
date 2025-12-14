@@ -54,13 +54,18 @@ catch
     )]
     public static void Test_Transaction_Requires_Commit()
     {
-        var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseInMemoryDatabase(databaseName: "Test_Transaction_Commit")
-            .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning))
-            .Options;
+        var options = DatabaseProvider.CreateOptions("Test_Transaction_Commit");
+        
+        if (DatabaseProvider.GetProvider() == DatabaseProvider.Provider.InMemory)
+        {
+            // Suppress InMemory transaction warning
+            options = new DbContextOptionsBuilder<AppDbContext>(options)
+                .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning))
+                .Options;
+        }
 
         // Act: Use transaction but don't commit
-        using (var context = new AppDbContext(options))
+        using (var context = DatabaseProvider.CreateContextWithOptions(options))
         {
             using var transaction = context.Database.BeginTransaction();
             
