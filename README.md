@@ -145,6 +145,42 @@ Run `npm test` to see all available tests. Currently includes:
 
 More tests coming soon! Check [TUTORIAL.md](TUTORIAL.md) for detailed explanations.
 
+## Coming Soon! 🚀
+
+The following high-priority topics are planned for future test additions:
+
+1. **N+1 Query Problem** ⭐⭐⭐
+   - The most common performance pitfall in EF Core
+   - Eager loading vs. Lazy loading vs. Explicit loading
+   - AsSplitQuery() for one-to-many collections
+   - Detecting N+1 queries
+
+2. **Projections with Select()** ⭐⭐⭐
+   - Performance optimization by selecting only needed columns
+   - DTO patterns and avoiding over-fetching
+   - Anonymous types vs. concrete DTOs
+   - Projection limitations (what can/cannot be translated)
+
+3. **Global Query Filters** ⭐⭐⭐
+   - Soft delete patterns (IsDeleted filtering)
+   - Multi-tenancy (TenantId filtering)
+   - IgnoreQueryFilters() to bypass filters
+   - Common pitfalls with filtered includes
+
+4. **Indexing and Performance** ⭐⭐
+   - Creating indexes (single and composite)
+   - Understanding query execution with indexes
+   - Index pitfalls (over-indexing, wrong columns)
+   - Unique indexes and constraints
+
+5. **Complex Queries and Gotchas** ⭐⭐
+   - GroupBy() client vs. server evaluation
+   - Subqueries and their limitations
+   - LINQ methods that force client evaluation
+   - Query splitting for cartesian explosion
+
+Stay tuned for these exciting additions to the tutorial!
+
 # Prompt
 
 Resume building Entity Framework tutorial as failing-first unit tests using custom assertion library (no xUnit). Focus on pitfalls, fixes, in-memory DB. Structure per latest outline. All examples start failing; teach why and how to fix.
