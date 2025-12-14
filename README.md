@@ -30,9 +30,41 @@ A hands-on Entity Framework Core tutorial where **all tests start failing intent
 
 4. **Run tests**
    ```bash
-   npm test                         # Run all tests
+   npm test                         # Run all tests (InMemory)
    npm run test:pattern -- "DbContext"  # Run specific tests
+   npm run test:sqlite              # Run all tests with SQLite
+   npm run test:sqlite:pattern -- "Transaction"  # Run specific tests with SQLite
    ```
+
+See [SETUP.md](SETUP.md) for detailed installation and usage instructions.
+
+## Database Providers
+
+This tutorial supports two database providers:
+
+### InMemory (Default)
+- **Pros**: Fast, no setup, great for learning basics
+- **Cons**: Doesn't enforce foreign keys, transactions, or some constraints
+- **Use for**: Core concepts, basic queries, learning EF Core fundamentals
+
+### SQLite (Recommended for realistic testing)
+- **Pros**: Real relational database, enforces constraints, supports transactions
+- **Cons**: Slightly slower, creates `.db` files
+- **Use for**: Testing transactions, cascade delete, foreign keys, realistic scenarios
+
+**Switch to SQLite:**
+```bash
+npm run test:sqlite              # All tests with SQLite
+npm run test:sqlite:pattern -- "Transaction"  # Specific category
+```
+
+**Why use SQLite?**
+- InMemory provider doesn't enforce foreign key constraints
+- InMemory doesn't truly support transactions
+- InMemory cascade delete behavior differs from real databases
+- Some tests will pass with InMemory but fail correctly with SQLite (teaching moments!)
+
+**See [DATABASE_PROVIDERS.md](DATABASE_PROVIDERS.md) for detailed comparison.**
 
 See [SETUP.md](SETUP.md) for detailed installation and usage instructions.
 

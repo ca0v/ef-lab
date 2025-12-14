@@ -17,6 +17,7 @@ class Program
         // Parse command line arguments
         string? pattern = null;
         bool generateDocs = false;
+        string? providerArg = null;
         
         for (int i = 0; i < args.Length; i++)
         {
@@ -28,6 +29,26 @@ class Program
             {
                 generateDocs = true;
             }
+            else if (args[i] == "--provider" && i + 1 < args.Length)
+            {
+                providerArg = args[i + 1].ToLower();
+            }
+        }
+
+        // Set database provider
+        if (providerArg == "sqlite")
+        {
+            DatabaseProvider.SetProvider(DatabaseProvider.Provider.SQLite);
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.WriteLine($"Using SQLite provider for tests\n");
+            Console.ResetColor();
+        }
+        else
+        {
+            DatabaseProvider.SetProvider(DatabaseProvider.Provider.InMemory);
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.WriteLine($"Using InMemory provider for tests\n");
+            Console.ResetColor();
         }
 
         // Auto-discover and register all tests with [Tutorial] attribute

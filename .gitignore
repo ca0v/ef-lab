@@ -28,6 +28,14 @@ artifacts/
 *.snupkg
 **/packages/*
 
+# SQLite test databases
+test_*.db
+test_*.db-shm
+test_*.db-wal
+*.db
+*.db-shm
+*.db-wal
+
 # Entity Framework migrations (optional - uncomment if needed)
 # **/Migrations/
 
