@@ -1,104 +1,88 @@
 ---
 artifact: ef-lab
 phase: design
-depends-on: []
-references: ["ef-lab.req"]
+depends-on: ["ef-lab.req"]
+references: []
 version: 1.0.0
 last-updated: 2025-12-19
 ---
 
-# EF Core Failing-First Tutorial - Design
+# Ef Lab - Design
 
-## Overview
-The high-level design approach for the EF Core Failing-First Tutorial adopts a modular, .NET-based architecture centered on a "failing-first" pedagogy. The system is structured as a console application with embedded unit tests that intentionally fail to teach EF Core concepts through error analysis and correction. Key design principles include separation of concerns (e.g., isolating EF operations from test logic), provider abstraction for database flexibility (InMemory vs. SQLite), and extensibility for adding modules. The design leverages .NET Core's cross-platform capabilities, integrates npm for build and execution scripting, and uses a custom assertion library to avoid external testing frameworks, ensuring focus on EF Core internals. Operational workflows emphasize iterative development: setup via npm, test execution with failure feedback, provider switching for constraint enforcement, and automatic documentation generation from test metadata. The system targets local development environments, prioritizing educational usability over production scalability, with built-in constraints to highlight EF Core pitfalls like state tracking and relationship handling.
+## Architecture Overview
+The EF Core Failing-First Tutorial (Ef Lab) is designed as a modular, hands-on educational tool for .NET developers to learn EF Core concepts through intentional test failures. The updated requirements, particularly in the "Questions & Clarifications" section, emphasize enhanced troubleshooting for setup and operational failures (e.g., environment-specific exceptions like "Settings file not found"), with added lines clarifying helper scripts for diagnostics and cross-platform PATH configurations. This integrates into the architecture by expanding setup and error-handling components to provide more robust, user-friendly feedback and diagnostics.
 
-## Architecture
-The architecture follows a layered, component-based model inspired by clean architecture principles, with clear separation between UI, business logic, data access, and testing layers. The core is a .NET console application (targeting .NET 8.0) that encapsulates EF Core operations, with npm orchestrating external interactions.
+The high-level architecture is a layered structure built on .NET 8.0+, utilizing npm for orchestration of setup and test execution. It includes:
+- A **Presentation Layer** for user interaction via npm scripts and console output.
+- A **Business Logic Layer** comprising EF Core contexts, custom assertions, and tutorial modules.
+- A **Data Layer** supporting pluggable providers (EF Core InMemory by default, with optional SQLite).
+- A **Testing Layer** with failing-first tests and custom assertion library for feedback.
+- Cross-cutting concerns: Configuration management, error diagnostics, and provider switching.
 
-### System Components
-- **Test Runner Component**: A console executable that discovers and executes failing tests using reflection on test classes. It integrates with the custom assertion library to report failures and guide fixes. Supports CLI flags for pattern-based execution (e.g., filtering by "Transaction").
-- **Custom Assertion Library**: A lightweight library providing assertion methods (e.g., AssertEqual, AssertThrows) without dependencies on xUnit/MSTest. It captures EF-specific errors (e.g., DbUpdateException) and formats them for educational feedback.
-- **EF Core Operations Module**: Core logic for EF interactions, including DbContext management, entity tracking, queries, transactions, and relationships. Implements provider abstraction to switch between InMemory and SQLite dynamically.
-- **Database Provider Abstraction Layer**: Abstracts database operations, allowing runtime switching via configuration. Handles setup for InMemory (no constraints) and SQLite (with foreign keys enabled).
-- **Documentation Generator**: A utility that parses test attributes (e.g., custom [Explanation] attributes) to generate TUTORIAL.md, integrating post-test execution for explanations of fixes and best practices.
-- **Setup and Troubleshooting Module**: Scripts and helpers for environment configuration, including PATH setup for .NET tools and diagnostic commands (e.g., clearing NuGet cache).
+This design ensures educational isolation (no production deployment), rapid iteration with in-memory DB, and realistic constraints via SQLite. The changes necessitate enhanced error-handling modules to address clarified troubleshooting needs, integrating seamlessly with existing npm-based workflows.
 
-### Modules and Layers
-- **Presentation Layer**: Command-line interface via npm scripts (e.g., `npm test` invokes the Test Runner). Handles user input/output, including error messages and progress indicators.
-- **Business Logic Layer**: Contains tutorial modules (e.g., Core Concepts, Transactions, Many-to-Many Relationships), each with failing test logic that enforces EF pitfalls. Implements decision flows for entity state changes, transaction nesting, and query optimization.
-- **Data Access Layer**: EF Core DbContext subclasses with entity models (e.g., Blog, Post). Manages migrations and provider-specific behaviors, enforcing constraints in SQLite mode.
-- **Testing Layer**: Overlays the business logic, ensuring all tests start failing (e.g., by omitting SaveChanges() calls). Integrates with the assertion library for validation.
-- **Infrastructure Layer**: Handles external integrations (e.g., .NET CLI for `dotnet-ef`), file I/O for SQLite databases, and npm-based orchestration.
+## Component Design
+The system is decomposed into the following key components, updated to incorporate troubleshooting enhancements from the modified "Questions & Clarifications" section, which adds support for diagnostic helper scripts and environment-specific exception handling.
 
-The architecture supports modularity, allowing instructors to add new test modules without altering core components. Communication between layers uses dependency injection (e.g., for DbContext scoping), with no direct database access from the presentation layer.
+- **Project Setup Component**: Handles dependency installation (.NET SDK 8.0+) via npm scripts (e.g., `npm run setup`). Includes PATH configuration for cross-platform compatibility (Windows, macOS, Linux) and integration of new troubleshooting helpers (e.g., scripts to detect NuGet cache issues or missing tools, referencing @setup.req and SETUP.md). This component now includes a Diagnostics submodule for logging and resolving setup failures, such as PATH variable errors or SDK version mismatches.
+  
+- **Custom Assertion Library**: A lightweight library (excluding xUnit/MSTest) for test assertions and feedback on EF Core operations. It provides structured error messages for failing tests, now extended with diagnostic outputs for operational failures (e.g., "Settings file not found"), integrating the added lines on helper scripts to generate diagnostic logs.
 
-## API Contracts
-The design defines clear interfaces for inter-component interactions, focusing on .NET conventions for contracts.
+- **Tutorial Module Structure**: Organized into modules (Core Concepts, Transactions, Many-to-Many Relationships, etc.) with failing tests. Each module uses a shared EF Core context and custom assertions. Updated to include troubleshooting workflows for module-specific failures, such as environment exceptions, with helper scripts to inspect database states or context configurations (referencing tutorial_outline.req.md and tutorial_tests.req.md).
 
-### Interfaces
-- **ITestRunner**: Interface for executing tests. Methods: `RunAllTests()`, `RunTestsByPattern(string pattern)`, `GetTestResults()`. Returns a list of `TestResult` objects containing pass/fail status, error messages, and fix explanations.
-- **IAssertionLibrary**: Core assertion contract. Methods: `AssertEqual<T>(T expected, T actual, string message)`, `AssertThrows<TException>(Action action, string message)`, `AssertEFState(EntityState expected, EntityState actual)`. Throws custom `TutorialAssertionException` for educational feedback.
-- **IDbProviderSwitcher**: Abstraction for database providers. Methods: `SwitchToInMemory()`, `SwitchToSQLite(string dbPath)`, `GetCurrentProvider()`. Integrates with EF Core's `DbContextOptionsBuilder`.
-- **IDocumentationGenerator**: For generating docs. Methods: `GenerateDocs(IEnumerable<TestResult> results)`, outputting to a markdown file with sections per module.
-- **IEFContext**: Base interface for DbContext subclasses. Methods: `AddEntity(object entity)`, `SaveChanges()`, `Query<T>() where T : class`. Extends `DbContext` for provider-specific overrides.
+- **Database Provider Switcher**: Manages switching between InMemory (default for fast, unconstrained learning) and SQLite (for relational constraints). Includes workflows for provider toggling via npm scripts, now enhanced with diagnostic checks for provider-specific issues (e.g., foreign key violations in SQLite), addressing the clarified troubleshooting needs (referencing database_providers.req.md).
 
-### Function Signatures
-- **Test Execution**: `void RunFailingTest(Action testAction, string explanation)` – Wraps a test in failure logic, calling assertions and capturing exceptions.
-- **Entity Operations**: `void TrackEntity<T>(T entity, EntityState state)` – Manages EF tracking, with validations for state mismatches.
-- **Transaction Handling**: `void ExecuteInTransaction(Action action, bool nested = false)` – Wraps actions in `IDbContextTransaction`, enforcing atomicity and rollback on failure.
-- **Query Operations**: `IQueryable<T> NoTrackingQuery<T>()` – Returns queries with `.AsNoTracking()`, highlighting modification pitfalls.
+- **Test Execution Engine**: Orchestrates running failing tests via npm scripts. Integrates with the custom assertion library for feedback. The updated design adds a Failure Analyzer submodule to parse and troubleshoot common operational failures, generating documentation-like outputs for error correction.
 
-### Data Structures
-- **TestResult**: Struct with properties: `bool Passed`, `string ErrorMessage`, `string FixExplanation`, `string ModuleName`.
-- **EntityModel**: Base class for tutorial entities (e.g., Blog with Posts), implementing `IEntity` for state tracking.
-- **ProviderConfig**: Enum-based config: `InMemory`, `SQLite`; includes connection strings for SQLite.
-- **TutorialModule**: Class representing a module (e.g., Transactions), containing a list of `ITestRunner`-executable tests.
+- **EF Core Context Manager**: Handles entity state, relationships, and queries. Supports multiple contexts and no-tracking modes. Extended with diagnostic logging for state management pitfalls, incorporating the new troubleshooting capabilities.
 
-## Data Model
-The data model is educational and sample-based, using EF Core Code-First approach with migrations for SQLite. It focuses on common relational patterns to illustrate pitfalls.
+All components are packaged as a .NET class library or console app, with npm acting as the entry point for cross-platform execution. The changes ensure that diagnostic helpers are reusable across components, reducing redundancy and improving user experience.
 
-### Database Schema
-- **Blogs Table**: Primary key `Id (int)`, `Title (string)`, `CreatedAt (DateTime)`. Represents a simple entity for core concepts.
-- **Posts Table**: Primary key `Id (int)`, `Title (string)`, `Content (string)`, `BlogId (int, FK to Blogs)`. Enforces one-to-many relationships, with cascade deletes in SQLite.
-- **Tags Table**: Primary key `Id (int)`, `Name (string)`. For many-to-many relationships.
-- **PostTags Table (Junction)**: Composite key `PostId (int, FK)`, `TagId (int, FK)`. Demonstrates explicit vs. implicit many-to-many setups.
-- **Migrations**: Handled via `dotnet-ef`, with initial migration for schema setup. InMemory mode ignores schema constraints.
+## Data Structures
+Key data structures are defined to support the tutorial's failing-first pedagogy and the updated troubleshooting features, which require structures for logging and diagnostic data.
 
-### Data Structures and Relationships
-- **Entity Classes**: `Blog` (has `ICollection<Post>`), `Post` (has `Blog` navigation), `Tag` (has `ICollection<Post>` via junction). Uses fluent API in `OnModelCreating` for relationships (e.g., `HasMany(b => b.Posts).WithOne(p => p.Blog)`).
-- **Relationships**: One-to-many (Blog-Post), many-to-many (Post-Tag via PostTags). Highlights tracking issues (e.g., detached entities) and query behaviors (e.g., N+1 problems in future topics).
-- **Constraints**: Foreign keys and cascades enforced in SQLite; absent in InMemory to demonstrate differences. Data seeding via `OnModelCreating` for failing test scenarios (e.g., orphaned posts).
+- **TestCase Structure**: A class representing a tutorial test case.
+  - Properties: `ModuleName` (string), `Description` (string), `ExpectedFailure` (string), `DiagnosticLogs` (list of strings - new field for troubleshooting, capturing helper script outputs like PATH checks or exception details).
+  - Usage: Stores metadata for each failing test, now including logs for environment-specific failures.
 
-The model is lightweight, with no complex inheritance or views, ensuring focus on EF Core fundamentals.
+- **AssertionResult Structure**: Extends the custom assertion library's output.
+  - Properties: `IsPassed` (bool), `Feedback` (string), `ErrorDetails` (dictionary<string, object> - updated to include keys like "ExceptionType" for clarified operational failures, e.g., "Settings file not found").
+  - Usage: Provides detailed feedback, integrating diagnostic data from helper scripts.
 
-## Algorithms & Logic
-Key algorithms implement the failing-first pedagogy and EF Core logic.
+- **DbContextConfiguration Structure**: Manages provider settings.
+  - Properties: `ProviderType` (enum: InMemory, SQLite), `ConnectionString` (string), `Diagnostics` (list of DiagnosticEntry - new nested structure with fields: `Issue` (string), `Resolution` (string), `Timestamp` (DateTime)).
+  - Usage: Supports provider switching and troubleshooting, with diagnostics logging provider-specific issues.
 
-### Key Algorithms
-- **Failing-First Test Execution**: For each test: Execute action → Catch exceptions via `AssertThrows` → If no exception or incorrect state, fail with educational message → User fixes → Re-run to pass. Logic ensures initial failure by omitting required calls (e.g., no `SaveChanges()`).
-- **Change Detection Algorithm**: Monitors `DbContext.ChangeTracker` for entity states. Decision flow: Check `Entry(entity).State` → If `Unchanged` but modified, fail test → Fix by calling `Update()` or `Attach()`.
-- **Transaction Management**: Nested transaction logic: Start outer transaction → Execute sub-actions → If failure, rollback outer → Enforce atomicity via `Commit()`. Handles concurrency via `IsolationLevel`.
-- **Query Optimization**: For no-tracking queries: Apply `.AsNoTracking()` → Attempt modifications → Fail if tracked, teaching detachment. Future: Detect N+1 via query count analysis.
+- **TutorialModule Structure**: Represents a module (e.g., Core Concepts).
+  - Properties: `Name` (string), `Tests` (list of TestCase), `TroubleshootingGuide` (dictionary<string, string> - new field mapping failure types to resolutions, incorporating added helper script references).
+  - Usage: Structures module content, now with integrated troubleshooting for enhanced clarity.
 
-### Decision Flows and Business Logic
-- **Provider Switching Flow**: User invokes switch → Update `DbContextOptions` → Recreate context → Run tests to observe constraint differences (e.g., FK violations in SQLite).
-- **Troubleshooting Logic**: On failure (e.g., "Tool not found"): Check PATH → Suggest `./npm-dotnet.sh` wrapper → Reload environment. Integrates with npm scripts for diagnostics.
-- **Documentation Generation**: Parse `[Explanation]` attributes from test methods → Aggregate by module → Output markdown with code snippets and fix steps.
-- **Concurrency Handling (Advanced)**: Simulate conflicts via parallel contexts → Detect `DbUpdateConcurrencyException` → Implement resolution logic (e.g., reload and retry).
+These structures are implemented as C# classes with EF Core annotations where applicable, ensuring compatibility with both InMemory and SQLite providers.
 
-Business logic emphasizes EF Core best practices: Always check state before saving, use transactions for multi-entity ops, avoid N+1 with eager loading.
+## API Design
+APIs are defined as internal interfaces for the .NET components, exposed via npm scripts for user interaction. Updated to include new endpoints for troubleshooting, integrating the modified requirements.
 
-## Dependencies
-- **Third-Party Libraries**: Entity Framework Core (Microsoft.EntityFrameworkCore, version 8.0+), Microsoft.EntityFrameworkCore.InMemory, Microsoft.EntityFrameworkCore.Sqlite. Custom assertion library as internal NuGet package.
-- **External Services**: .NET CLI (for `dotnet-ef` migrations), npm (for scripting), SQLite runtime (bundled or system-installed).
-- **Platform Dependencies**: .NET SDK 8.0, Node.js for npm. No cloud services; all local.
-- **Version Constraints**: EF Core aligned with .NET 8.0 LTS; npm scripts assume standard versions.
+- **ISetupApi**: Interface for project setup.
+  - Methods: `InstallDependencies()` (installs .NET SDK via npm), `ConfigurePath()` (cross-platform PATH setup), `RunDiagnostics()` (new method: executes helper scripts for issues like NuGet cache corruption, returning diagnostic logs).
+  - Integration: Addresses FR-1, with added diagnostic capabilities.
 
-## Questions & Clarifications
-[AI-CLARIFY: Should the custom assertion library be a separate NuGet package or embedded in the project? For provider switching, is runtime reconfiguration sufficient, or does it require app restart? Confirm if all 33 tests need unique DbContext instances to avoid tracking conflicts. For advanced topics like concurrency, specify if simulated conflicts should use real threading or mock exceptions. Finally, ensure the documentation generator handles internationalization or remains English-only.]
+- **IAssertionApi**: Interface for custom assertions.
+  - Methods: `AssertEntityState(entity, expectedState)`, `ProvideFeedback(failureDetails)` (updated to accept diagnostic data, e.g., exception types).
+  - Integration: Supports FR-2, enhanced for troubleshooting failures.
 
-## Cross-References
-[Leave empty - references are documented in the metadata header above]
+- **ITutorialApi**: Interface for module management.
+  - Methods: `LoadModule(moduleName)`, `ExecuteTests(moduleName)` (now includes optional diagnostic mode), `GetTroubleshootingHelp(failureType)` (new method: returns resolutions from helper scripts).
+  - Integration: Covers FR-3, with added troubleshooting.
 
-## AI Interaction Log
-<!-- Auto-maintained by PromptPress extension -->
+- **IDatabaseApi**: Interface for provider management.
+  - Methods: `SwitchProvider(providerType)`, `ValidateConstraints()` (checks for SQLite-specific issues), `GenerateDiagnosticReport()` (new method: produces reports on operational failures).
+  - Integration: Aligns with FR-4, incorporating diagnostic workflows.
+
+- **ITestRunnerApi**: Interface for execution.
+  - Methods: `RunAllTests()`, `AnalyzeFailure(testCase)` (new method: uses helper scripts to dissect failures, e.g., environment exceptions).
+  - Integration: Supports FR-5, with enhanced error handling.
+
+All APIs are asynchronous where applicable, using .NET's Task-based model, and return structured results including diagnostic data.
+
+## Performance Considerations
+The design prioritizes educational efficiency, with InMemory provider enabling sub-second test iterations. SQLite adds overhead for realism (e.g., ~10-50ms per transaction due to disk I/O), mitigated by optional switching. The updated troubleshooting features (helper scripts and diagnostics) introduce minor overhead (~5-10ms per diagnostic run), optimized via lazy logging and caching of diagnostic results. Memory usage is low (under 100MB for typical runs), with EF Core's change tracking optimized for small datasets. Cross-platform npm execution ensures consistent performance, with considerations for CI/CD-like environments to avoid production scaling issues. Overall, the system remains lightweight, focusing on rapid feedback for learning.
